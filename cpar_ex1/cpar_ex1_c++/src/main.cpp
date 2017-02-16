@@ -98,23 +98,23 @@ void OnMultLine(int m_ar, int m_br)
 
 void OnMultParallel(int m_ar, int m_br, int numThreads)
 {
-    double time1, time2, temp;
+    double time1, time2;
     double *pha, *phb, *phc;
-    int i, j, k;
 
     createMatrixes(m_ar, m_br, pha, phb, phc);
 
     time1 = omp_get_wtime();
 
     #pragma omp parallel for num_threads(numThreads)
-    for(i=0; i<m_ar; i++)
-    {	for( j=0; j<m_br; j++)
-        {	temp = 0;
-            for( k=0; k<m_ar; k++)
+    for(int i=0; i < m_ar; i++)
+    {	for(int j=0; j < m_br; j++)
+        {
+            double temp = 0;
+            for(int k=0; k < m_ar; k++)
             {
                 temp += pha[i*m_ar+k] * phb[k*m_br+j];
             }
-            phc[i*m_ar+j]=temp;
+            phc[i*m_ar+j] = temp;
         }
     }
 
@@ -127,7 +127,6 @@ void OnMultLineParallel(int m_ar, int m_br, int numThreads)
 {
     double time1, time2;
     double *pha, *phb, *phc;
-    int i, j, k;
 
     createMatrixes(m_ar, m_br, pha, phb, phc);
     memset(phc, 0, m_ar * m_br * sizeof(double));
@@ -135,11 +134,11 @@ void OnMultLineParallel(int m_ar, int m_br, int numThreads)
     time1 = omp_get_wtime();
 
     #pragma omp parallel for num_threads(numThreads)
-    for (i = 0; i < m_ar; i++)
+    for (int i = 0; i < m_ar; i++)
     {
-        for (k = 0; k < m_br; k++)
+        for (int k = 0; k < m_br; k++)
         {
-            for (j = 0; j < m_br; j++)
+            for (int j = 0; j < m_br; j++)
             {
                 phc[i*m_ar+j] += pha[i*m_ar+k] * phb[k*m_br+j];
             }
