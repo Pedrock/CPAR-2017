@@ -123,7 +123,7 @@ void OnMultParallel(int m_ar, int m_br, int numThreads)
     printAndFreeMatrixes(m_ar, m_br, pha, phb, phc);
 }
 
-void OnMultLineParallel(int m_ar, int m_br, int numThreads)
+void OnMultLineParallel(const int m_ar, const int m_br, const int numThreads)
 {
     double time1, time2;
     double *pha, *phb, *phc;
@@ -152,9 +152,7 @@ void OnMultLineParallel(int m_ar, int m_br, int numThreads)
 
 int main (int argc, char *argv[])
 {
-
-    char c;
-    int lin, col, nt=1;
+    int lin, col;
     int op = 1, numThreads = 4;
 
     int EventSet = PAPI_NULL;

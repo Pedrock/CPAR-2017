@@ -15,7 +15,7 @@ COMPILE_AND_LINK_COMMON_OPTIONS = -fopenmp
 
 default: release
 
-release: CCFLAGS = -O2 -Wall
+release: CCFLAGS = -O3 -Wall
 release: $(OUT)
 
 $(OUT):
