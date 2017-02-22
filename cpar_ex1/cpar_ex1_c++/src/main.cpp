@@ -107,7 +107,8 @@ void OnMultParallel(int m_ar, int m_br, int numThreads)
 
     #pragma omp parallel for num_threads(numThreads)
     for(int i=0; i < m_ar; i++)
-    {	for(int j=0; j < m_br; j++)
+    {
+        for(int j=0; j < m_br; j++)
         {
             double temp = 0;
             for(int k=0; k < m_ar; k++)
