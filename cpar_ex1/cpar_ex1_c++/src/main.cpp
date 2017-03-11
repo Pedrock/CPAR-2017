@@ -12,27 +12,27 @@ using namespace std;
 #define SYSTEMTIME clock_t
 
 void createMatrixes(int m_ar, int m_br, double*& pha, double*& phb, double*& phc) {
-    pha = (double *)malloc((m_ar * m_ar) * sizeof(double));
-    phb = (double *)malloc((m_ar * m_ar) * sizeof(double));
-    phc = (double *)malloc((m_ar * m_ar) * sizeof(double));
+    pha = (double *)malloc(m_ar * m_br * sizeof(double));
+    phb = (double *)malloc(m_br * m_ar * sizeof(double));
+    phc = (double *)malloc(m_ar * m_ar * sizeof(double));
 
     int i, j;
 
-    for(i=0; i<m_ar; i++)
-        for(j=0; j<m_ar; j++)
-            pha[i*m_ar + j] = (double)1.0;
+    for (i = 0; i < m_ar; i++)
+        for(j = 0; j < m_br; j++)
+            pha[i*m_br + j] = (double)1.0;
 
-    for(i=0; i<m_br; i++)
-        for(j=0; j<m_br; j++)
-            phb[i*m_br + j] = (double)(i+1);
+    for (i = 0; i < m_br; i++)
+        for(j = 0; j < m_ar; j++)
+            phb[i*m_ar + j] = (double)(i+1);
 }
 
 void printAndFreeMatrixes(int m_ar, int m_br, double*& pha, double*& phb, double*& phc) {
-    int i, j;
+    int j;
     cout << "Result matrix: " << endl;
-    for(i=0; i<1; i++)
-    {	for(j=0; j<min(10,m_br); j++)
-            cout << phc[j] << " ";
+
+    for (j = 0; j < min(10, m_ar); j++) {
+        cout << phc[j] << " ";
     }
     cout << endl;
 
@@ -52,14 +52,16 @@ void OnMult(int m_ar, int m_br)
 
     Time1 = clock();
 
-    for(i=0; i<m_ar; i++)
-    {	for( j=0; j<m_br; j++)
-        {	temp = 0;
-            for( k=0; k<m_ar; k++)
+    for (i = 0; i < m_ar; i++)
+    {	
+        for (j = 0; j < m_ar; j++)
+        {
+            temp = 0;
+            for (k = 0; k < m_br; k++)
             {
-                temp += pha[i*m_ar+k] * phb[k*m_br+j];
+                temp += pha[i*m_br+k] * phb[k*m_ar+j];
             }
-            phc[i*m_ar+j]=temp;
+            phc[i*m_ar+j] = temp;
         }
     }
 
@@ -76,7 +78,7 @@ void OnMultLine(int m_ar, int m_br)
     double *pha, *phb, *phc;
 
     createMatrixes(m_ar, m_br, pha, phb, phc);
-    memset(phc, 0, m_ar * m_br * sizeof(double));
+    memset(phc, 0, m_ar * m_ar * sizeof(double));
 
     Time1 = clock();
 
@@ -84,9 +86,9 @@ void OnMultLine(int m_ar, int m_br)
     {
         for (k = 0; k < m_br; k++)
         {
-            for (j = 0; j < m_br; j++)
+            for (j = 0; j < m_ar; j++)
             {
-                phc[i*m_ar+j] += pha[i*m_ar+k] * phb[k*m_br+j];
+                phc[i*m_ar+j] += pha[i*m_br+k] * phb[k*m_ar+j];
             }
         }
     }
@@ -106,14 +108,14 @@ void OnMultParallel(int m_ar, int m_br, int numThreads)
     time1 = omp_get_wtime();
 
     #pragma omp parallel for num_threads(numThreads)
-    for(int i=0; i < m_ar; i++)
+    for(int i = 0; i < m_ar; i++)
     {
-        for(int j=0; j < m_br; j++)
+        for(int j = 0; j < m_ar; j++)
         {
             double temp = 0;
-            for(int k=0; k < m_ar; k++)
+            for(int k = 0; k < m_br; k++)
             {
-                temp += pha[i*m_ar+k] * phb[k*m_br+j];
+                temp += pha[i*m_br+k] * phb[k*m_ar+j];
             }
             phc[i*m_ar+j] = temp;
         }
@@ -130,7 +132,7 @@ void OnMultLineParallel(const int m_ar, const int m_br, const int numThreads)
     double *pha, *phb, *phc;
 
     createMatrixes(m_ar, m_br, pha, phb, phc);
-    memset(phc, 0, m_ar * m_br * sizeof(double));
+    memset(phc, 0, m_ar * m_ar * sizeof(double));
 
     time1 = omp_get_wtime();
 
@@ -139,9 +141,9 @@ void OnMultLineParallel(const int m_ar, const int m_br, const int numThreads)
     {
         for (int k = 0; k < m_br; k++)
         {
-            for (int j = 0; j < m_br; j++)
+            for (int j = 0; j < m_ar; j++)
             {
-                phc[i*m_ar+j] += pha[i*m_ar+k] * phb[k*m_br+j];
+                phc[i*m_ar+j] += pha[i*m_br+k] * phb[k*m_ar+j];
             }
         }
     }
