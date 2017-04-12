@@ -5,6 +5,7 @@
 #include <mpi.h>
 #include <iostream>
 #include <mpi.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -12,14 +13,14 @@ using namespace std;
 
 // Utilizar o rank para preencher os blocos.
 // Se não definido, é utilizado o algoritmo do primeiro trabalho.
-#define FILL_BLOCKS_RANK
-
-// Se definido, a matriz final é imprimida
-#define PRINT_RESULT
+//#define FILL_BLOCKS_RANK
 
 // Matrizes: A[m,k]  B[k,n]  C[m,n]
 
 struct Dimensions {
+    size_t m;
+    size_t k;
+    size_t n;
     size_t aHeight;
     size_t aWidth;
     size_t bHeight;
@@ -44,6 +45,10 @@ int getBlockMaxDimension(const int dimension, const int nProcsDim) {
 Dimensions getDimensions(const int m, const int k, const int n, const int dims[N_DIMS], const int coords[N_DIMS]) {
     Dimensions dimensions;
 
+    dimensions.m = (size_t)m;
+    dimensions.k = (size_t)k;
+    dimensions.n = (size_t)n;
+
     dimensions.aHeight = (size_t)getBlockDimension(m, dims[0], coords[0]);
     dimensions.aWidth = (size_t)getBlockDimension(k, dims[1], coords[1]);
 
@@ -60,38 +65,38 @@ Dimensions getDimensions(const int m, const int k, const int n, const int dims[N
 }
 
 void createBlocks(const int rank,
-                  const int coords[N_DIMS],
+                  const int coords[N_DIMS], const int dims[N_DIMS],
                   Dimensions dim,
                   double *&a, double *&b, double *&c)
 {
     a = (double *)malloc(dim.aReservedSpace * sizeof(double));
     b = (double *)malloc(dim.bReservedSpace * sizeof(double));
-    c = (double *)malloc((dim.cHeight * dim.cWidth) * sizeof(double));
+    c = (double *)calloc((dim.cHeight * dim.cWidth), sizeof(double));
 
     for (int i = 0; i < dim.aHeight; i++) {
         for (int j = 0; j < dim.aWidth; j++) {
             double val;
-            #ifdef FILL_BLOCKS_RANK
+#ifdef FILL_BLOCKS_RANK
             val = rank;
-            #else
+#else
             val = 1.0;
-            #endif
+#endif
             a[i*dim.aWidth + j] = val;
         }
     }
 
-    #ifndef FILL_BLOCKS_RANK
-    const size_t offset = coords[0] * dim.aWidth;
-    #endif
+#ifndef FILL_BLOCKS_RANK
+    const size_t offset = coords[0] * dim.k / dims[0];
+#endif
 
     for (int i = 0; i < dim.bHeight; i++) {
         for (int j = 0; j < dim.bWidth; j++) {
             double val;
-            #ifdef FILL_BLOCKS_RANK
+#ifdef FILL_BLOCKS_RANK
             val = rank;
-            #else
+#else
             val = offset + i + 1.0;
-            #endif
+#endif
             b[i*dim.bWidth + j] = val;
         }
     }
@@ -181,7 +186,7 @@ void SUMMA(const int coords[N_DIMS], const int dims[N_DIMS],
 }
 
 void gatherResult(const int rank, const int dims[N_DIMS],
-                  const int mb, const int nb,
+                  const size_t mb, const size_t nb,
                   const double *block,
                   const int m, const int n,
                   double *total)
@@ -215,11 +220,11 @@ void gatherResult(const int rank, const int dims[N_DIMS],
 
             const int blockFirstRow = iBlocks * m / dims[0];
             const int blockFirstCol = jBlocks * n / dims[1];
-            const int blockWidth = (iBlocks + 1) * m / dims[0] - blockFirstRow;
-            const int blockHeight = (jBlocks + 1) * n / dims[1] - blockFirstCol;
+            const int blockHeight = (iBlocks + 1) * m / dims[0] - blockFirstRow;
+            const int blockWidth = (jBlocks + 1) * n / dims[1] - blockFirstCol;
 
-            for (int i = 0; i < blockWidth; ++i) {
-                for (int j = 0; j < blockHeight; ++j) {
+            for (int i = 0; i < blockHeight; ++i) {
+                for (int j = 0; j < blockWidth; ++j) {
                     total[(blockFirstRow + i)*n + (blockFirstCol + j)] = recvbuf[idx];
                     idx++;
                 }
@@ -232,11 +237,11 @@ void gatherResult(const int rank, const int dims[N_DIMS],
 }
 
 
-void readArgs(int argc, char *argv[], const int rank, int &m, int &k, int &n) {
-    if (argc != 4) {
+void readArgs(int argc, char *argv[], const int rank, int &m, int &k, int &n, int &print_result) {
+    if (argc != 4 && argc != 5) {
         if (rank == 0) {
             cerr << "Usage:" << endl
-                 << "mpirun -n <number of procs> ./summa <m> <k> <n>" << endl
+                 << "mpirun -n <number of procs> ./summa <m> <k> <n> [print_result]" << endl
                  << "A[m, k] * B[k, n] = C[m, n]" << endl;
         }
         MPI_Abort(MPI_COMM_WORLD, 1);
@@ -245,10 +250,11 @@ void readArgs(int argc, char *argv[], const int rank, int &m, int &k, int &n) {
     m = atoi(argv[1]);
     k = atoi(argv[2]);
     n = atoi(argv[3]);
+    print_result = (argc == 4) ? 0 : atoi(argv[4]);
 
     if (m <= 0 || k <= 0 || n <= 0) {
         if (rank == 0) {
-            cerr << "Invalid matrices dimensions" << endl;
+            cerr << "Error: Invalid matrices dimensions." << endl;
         }
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
@@ -256,19 +262,26 @@ void readArgs(int argc, char *argv[], const int rank, int &m, int &k, int &n) {
 
 int main(int argc, char *argv[])
 {
-    int m, k, n, rank, numberProcesses;
+    int m, k, n, print_result, rank, numberProcesses;
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    readArgs(argc, argv, rank, m, k, n);
+    readArgs(argc, argv, rank, m, k, n, print_result);
 
     MPI_Comm_size(MPI_COMM_WORLD, &numberProcesses);
+
+    if (min(m, min(k, n)) < numberProcesses) {
+        if (rank == 0) {
+            cerr << "Error: None of the matrices dimensions can be smaller than the number of processes." << endl;
+        }
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
 
     int n_proc_rows = (int)sqrt(numberProcesses);
     int n_proc_cols = n_proc_rows;
 
     if (n_proc_cols * n_proc_rows != numberProcesses) {
-        cerr << "Error: The number of processes must be a perfect square" << endl;
+        cerr << "Error: The number of processes must be a perfect square." << endl;
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
@@ -284,39 +297,39 @@ int main(int argc, char *argv[])
     const Dimensions dimensions = getDimensions(m, k, n, dims, coords);
 
     double *a_block, *b_block, *c_block;
-    createBlocks(rank, coords, dimensions, a_block, b_block, c_block);
+    createBlocks(rank, coords, dims, dimensions, a_block, b_block, c_block);
 
-    double tstart, tend;
-    tstart = MPI_Wtime();
+    double timeStart, timeEnd;
+    timeStart = MPI_Wtime();
 
     SUMMA(coords, dims, comm_cart, rank, dimensions, m, k, n, a_block, b_block, c_block);
 
-    tend = MPI_Wtime();
+    timeEnd = MPI_Wtime();
 
-    double etime = tend - tstart;
+    double timeDif = timeEnd - timeStart;
+    double maxTimeDiff;
 
-    // TODO - get max time
-
-    if (rank == 0) {
-        cout << "SUMMA took " << etime << " sec" << endl;
-    }
-
-    #ifdef PRINT_RESULT
-    double * c_total = NULL;
-    if (rank == 0) {
-        c_total = (double *)malloc(m * k * sizeof(double));
-    }
-
-    const int mb = getBlockDimension(m, dims[0], coords[0]);
-    const int nb = getBlockDimension(n, dims[1], coords[1]);
-
-    gatherResult(rank, dims, mb, nb, c_block, m, n, c_total);
+    MPI_Reduce(&timeDif, &maxTimeDiff, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
     if (rank == 0) {
-        print_matrix(m, k, c_total);
-        free(c_total);
+        cout << "Time: " << maxTimeDiff << " seconds." << endl;
     }
-    #endif
+
+    if (print_result) {
+        double * c_total = NULL;
+        if (rank == 0) {
+            c_total = (double *)malloc(m * n * sizeof(double));
+        }
+
+        gatherResult(rank, dims, dimensions.cHeight, dimensions.cWidth, c_block, m, n, c_total);
+
+        if (rank == 0) {
+            cout << endl << "Matrix C: " << endl;
+            print_matrix(m, n, c_total);
+            cout << endl;
+            free(c_total);
+        }
+    }
 
     free(a_block);
     free(b_block);
