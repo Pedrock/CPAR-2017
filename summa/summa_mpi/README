@@ -1,0 +1,6 @@
+Compile:
+mpiCC.openmpi -o summa main.cpp -O3
+
+
+Run:
+mpirun -n <PROCESSES> ./summa <M> <K> <N> [print_result]

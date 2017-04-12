@@ -9,6 +9,9 @@
 
 using namespace std;
 
+#define cell_t float
+#define MPI_CELL_T MPI_FLOAT
+
 #define N_DIMS 2
 
 // Utilizar o rank para preencher os blocos.
@@ -67,15 +70,15 @@ Dimensions getDimensions(const int m, const int k, const int n, const int dims[N
 void createBlocks(const int rank,
                   const int coords[N_DIMS], const int dims[N_DIMS],
                   Dimensions dim,
-                  double *&a, double *&b, double *&c)
+                  cell_t *&a, cell_t *&b, cell_t *&c)
 {
-    a = (double *)malloc(dim.aReservedSpace * sizeof(double));
-    b = (double *)malloc(dim.bReservedSpace * sizeof(double));
-    c = (double *)calloc((dim.cHeight * dim.cWidth), sizeof(double));
+    a = (cell_t *)malloc(dim.aReservedSpace * sizeof(cell_t));
+    b = (cell_t *)malloc(dim.bReservedSpace * sizeof(cell_t));
+    c = (cell_t *)calloc((dim.cHeight * dim.cWidth), sizeof(cell_t));
 
     for (int i = 0; i < dim.aHeight; i++) {
         for (int j = 0; j < dim.aWidth; j++) {
-            double val;
+            cell_t val;
 #ifdef FILL_BLOCKS_RANK
             val = rank;
 #else
@@ -91,7 +94,7 @@ void createBlocks(const int rank,
 
     for (int i = 0; i < dim.bHeight; i++) {
         for (int j = 0; j < dim.bWidth; j++) {
-            double val;
+            cell_t val;
 #ifdef FILL_BLOCKS_RANK
             val = rank;
 #else
@@ -102,7 +105,7 @@ void createBlocks(const int rank,
     }
 }
 
-void matrixMultiply(const int m, const int k, const int n, const double *A, const double *B, double *C) {
+void matrixMultiply(const int m, const int k, const int n, const cell_t *A, const cell_t *B, cell_t *C) {
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
             C[i*n + j] = 0.0;
@@ -113,14 +116,14 @@ void matrixMultiply(const int m, const int k, const int n, const double *A, cons
     }
 }
 
-void addMatrixToMatrix(const int m, const int n, double *other, double *dest) {
+void addMatrixToMatrix(const int m, const int n, cell_t *other, cell_t *dest) {
     int length = m*n;
     for (int i = 0; i < length; i++) {
         dest[i] += other[i];
     }
 }
 
-void print_matrix(const int rows, const int cols, const double *matrix) {
+void print_matrix(const int rows, const int cols, const cell_t *matrix) {
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < cols; j++) {
             printf("%1.2f\t", matrix[i*cols + j]);
@@ -133,7 +136,7 @@ void SUMMA(const int coords[N_DIMS], const int dims[N_DIMS],
            MPI_Comm comm_cart, const int rank,
            const Dimensions dimensions,
            const int m, const int k, const int n,
-           double *a_block, double *b_block, double *c_block)
+           cell_t *a_block, cell_t *b_block, cell_t *c_block)
 {
     int my_row = coords[0];
     int my_col = coords[1];
@@ -146,12 +149,12 @@ void SUMMA(const int coords[N_DIMS], const int dims[N_DIMS],
     MPI_Cart_sub(comm_cart, remain_dims_row, &row_comm);
     MPI_Cart_sub(comm_cart, remain_dims_col, &col_comm);
 
-    double *a_block_copy = (double *)malloc(dimensions.aReservedSpace*sizeof(double));
-    double *b_block_copy = (double *)malloc(dimensions.bReservedSpace*sizeof(double));
-    double *c_block_temp = (double *)calloc(dimensions.cHeight*dimensions.cWidth, sizeof(double));
+    cell_t *a_block_copy = (cell_t *)malloc(dimensions.aReservedSpace*sizeof(cell_t));
+    cell_t *b_block_copy = (cell_t *)malloc(dimensions.bReservedSpace*sizeof(cell_t));
+    cell_t *c_block_temp = (cell_t *)calloc(dimensions.cHeight*dimensions.cWidth, sizeof(cell_t));
 
-    memcpy(a_block_copy, a_block, dimensions.aHeight*dimensions.aWidth*sizeof(double));
-    memcpy(b_block_copy, b_block, dimensions.bHeight*dimensions.bWidth*sizeof(double));
+    memcpy(a_block_copy, a_block, dimensions.aHeight*dimensions.aWidth*sizeof(cell_t));
+    memcpy(b_block_copy, b_block, dimensions.bHeight*dimensions.bWidth*sizeof(cell_t));
 
     int nBlocks = dims[0];
 
@@ -162,16 +165,16 @@ void SUMMA(const int coords[N_DIMS], const int dims[N_DIMS],
         int nb = getBlockDimension(n, dims[1], my_col);
 
         if (my_col == l) {
-            memcpy(a_block, a_block_copy, mb*kb*sizeof(double));
+            memcpy(a_block, a_block_copy, mb*kb*sizeof(cell_t));
         }
         // broadcast A block within my row
-        MPI_Bcast(a_block, mb*kb, MPI_DOUBLE, l, row_comm);
+        MPI_Bcast(a_block, mb*kb, MPI_CELL_T, l, row_comm);
 
         if (my_row == l) {
-            memcpy(b_block, b_block_copy, kb*nb*sizeof(double));
+            memcpy(b_block, b_block_copy, kb*nb*sizeof(cell_t));
         }
         // broadcast B block within my column
-        MPI_Bcast(b_block, kb*nb, MPI_DOUBLE, l, col_comm);
+        MPI_Bcast(b_block, kb*nb, MPI_CELL_T, l, col_comm);
 
         // c_block_temp = a_block * b_block
         matrixMultiply(mb, kb, nb, a_block, b_block, c_block_temp);
@@ -187,16 +190,16 @@ void SUMMA(const int coords[N_DIMS], const int dims[N_DIMS],
 
 void gatherResult(const int rank, const int dims[N_DIMS],
                   const size_t mb, const size_t nb,
-                  const double *block,
+                  const cell_t *block,
                   const int m, const int n,
-                  double *total)
+                  cell_t *total)
 {
-    double *recvbuf = NULL;
+    cell_t *recvbuf = NULL;
     int *recvcounts = NULL;
     int *displs = NULL;
 
     if (rank == 0) {
-        recvbuf = (double*)malloc(m * n * sizeof(double));
+        recvbuf = (cell_t*)malloc(m * n * sizeof(cell_t));
         int nProcs = dims[0] * dims[1];
         recvcounts = (int*)malloc(nProcs * sizeof(int));
         displs = (int*)malloc(nProcs * sizeof(int));
@@ -210,7 +213,7 @@ void gatherResult(const int rank, const int dims[N_DIMS],
         }
     }
 
-    MPI_Gatherv(block, mb*nb, MPI_DOUBLE, recvbuf, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(block, mb*nb, MPI_CELL_T, recvbuf, recvcounts, displs, MPI_CELL_T, 0, MPI_COMM_WORLD);
 
     if (rank != 0) return;
 
@@ -296,7 +299,7 @@ int main(int argc, char *argv[])
 
     const Dimensions dimensions = getDimensions(m, k, n, dims, coords);
 
-    double *a_block, *b_block, *c_block;
+    cell_t *a_block, *b_block, *c_block;
     createBlocks(rank, coords, dims, dimensions, a_block, b_block, c_block);
 
     double timeStart, timeEnd;
@@ -316,9 +319,9 @@ int main(int argc, char *argv[])
     }
 
     if (print_result) {
-        double * c_total = NULL;
+        cell_t * c_total = NULL;
         if (rank == 0) {
-            c_total = (double *)malloc(m * n * sizeof(double));
+            c_total = (cell_t *)malloc(m * n * sizeof(cell_t));
         }
 
         gatherResult(rank, dims, dimensions.cHeight, dimensions.cWidth, c_block, m, n, c_total);
