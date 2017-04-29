@@ -4,44 +4,42 @@
 #include <helper_functions.h>
 #include <helper_cuda.h>
 
-#define BLOCK_SIZE 1
+#define BLOCK_SIZE 32
 
-__global__ void matrixMulCUDA(float *C, float *A, float *B, int widthA, int widthB)
+__global__ void matrixMulCUDA(float *A, float *B, float *C, int widthA, int widthB)
 {
     const int block_x = blockIdx.x;
     const int block_y = blockIdx.y;
     const int thread_x = threadIdx.x;
     const int thread_y = threadIdx.y;
 
-    const int aBegin = widthA * BLOCK_SIZE * block_y;
-    const int aEnd   = aBegin + widthA - 1;
-    const int aStep  = BLOCK_SIZE;
-    const int bBegin = BLOCK_SIZE * block_x;
-    const int bStep  = BLOCK_SIZE * widthB;
+    float Cvalue = 0;
 
-    float Csub = 0;
+    float* Cs = C + widthB * BLOCK_SIZE * block_y + BLOCK_SIZE * block_x;
 
     __shared__ float As[BLOCK_SIZE][BLOCK_SIZE];
     __shared__ float Bs[BLOCK_SIZE][BLOCK_SIZE];
 
-    for (int a = aBegin, b = bBegin; a <= aEnd; a += aStep, b += bStep)
+    for (int m = 0; m < (widthA / BLOCK_SIZE); ++m)
     {
-        As[thread_y][thread_x] = A[a + widthA * thread_y + thread_x];
-        Bs[thread_y][thread_x] = B[b + widthB * thread_y + thread_x];
+    	float* subA = A + widthA * BLOCK_SIZE * block_y + BLOCK_SIZE * m;
+    	float* subB = B + widthB * BLOCK_SIZE * m + BLOCK_SIZE * block_x;
+
+    	As[thread_y][thread_x] = subA[thread_y * widthA + thread_x];
+    	Bs[thread_y][thread_x] = subB[thread_y * widthB + thread_x];
 
         __syncthreads();
 
 		#pragma unroll
         for (int k = 0; k < BLOCK_SIZE; ++k)
         {
-            Csub += As[thread_y][k] * Bs[k][thread_x];
+        	Cvalue += As[thread_y][k] * Bs[k][thread_x];
         }
 
         __syncthreads();
     }
 
-    int c = widthB * BLOCK_SIZE * block_y + BLOCK_SIZE * block_x;
-    C[c + widthB * thread_y + thread_x] = Csub;
+    Cs[thread_y * widthB + thread_x] = Cvalue;
 }
 
 
@@ -50,11 +48,11 @@ int matrixMultiply(int argc, char **argv, dim3 &dimsA, dim3 &dimsB)
 	// Host
     unsigned int size_A = dimsA.x * dimsA.y;
     unsigned int size_B = dimsB.x * dimsB.y;
-    dim3 dimsC(dimsA.y, dimsB.x, 1);
+    dim3 dimsC(dimsB.x, dimsA.y, 1);
 
     unsigned int mem_size_A = sizeof(float) * size_A;
     unsigned int mem_size_B = sizeof(float) * size_B;
-    unsigned int mem_size_C = sizeof(float) * dimsA.y * dimsB.x;
+    unsigned int mem_size_C = sizeof(float) * dimsC.y * dimsC.x;
 
     float *h_A = (float *)malloc(mem_size_A);
     float *h_B = (float *)malloc(mem_size_B);
@@ -83,7 +81,7 @@ int matrixMultiply(int argc, char **argv, dim3 &dimsA, dim3 &dimsB)
 
     // Threads and grids
     dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
-    dim3 grid(dimsA.x / threads.x, dimsB.y / threads.y);
+    dim3 grid(dimsC.x / threads.x, dimsC.y / threads.y);
 
     // Start timer
     cudaEvent_t start, stop;
@@ -92,7 +90,7 @@ int matrixMultiply(int argc, char **argv, dim3 &dimsA, dim3 &dimsB)
     checkCudaErrors(cudaEventRecord(start, NULL));
 
     // Multiply matrixes
-    matrixMulCUDA<<< grid, threads >>>(d_C, d_A, d_B, dimsA.x, dimsB.x);
+    matrixMulCUDA<<< grid, threads >>>(d_A, d_B, d_C, dimsA.x, dimsB.x);
 
     checkCudaErrors(cudaEventRecord(stop, NULL));
     checkCudaErrors(cudaEventSynchronize(stop));
@@ -104,7 +102,7 @@ int matrixMultiply(int argc, char **argv, dim3 &dimsA, dim3 &dimsB)
     // Print time and performance
     double ops = 2.0 * (double)dimsA.y * (double)dimsA.x * (double)dimsB.x;
     double gigaFlops = (ops * 1.0e-9f) / (msecTotal / 1000.0f);
-    printf("Performance: %.2f GFlop/s, Time: %.3f msec", gigaFlops, msecTotal);
+    printf("Performance: %.2f GFlop/s, Time: %.3f msec\n", gigaFlops, msecTotal);
 
     checkCudaErrors(cudaMemcpy(h_C, d_C, mem_size_C, cudaMemcpyDeviceToHost));
 
